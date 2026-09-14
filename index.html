@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>지뢰 찾기</title>
+<style>
+  :root { --cell: 34px; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px;
+    font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    background: linear-gradient(160deg, #dfe7f1, #f5f7fb);
+    color: #1f2937;
+  }
+  .app { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 100%; }
+  h1 { margin: 0; font-size: 28px; letter-spacing: -0.5px; }
+
+  .levels {
+    display: flex; gap: 4px; padding: 4px;
+    background: #fff; border-radius: 999px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, .08);
+  }
+  .levels button {
+    border: 0; background: transparent; font: inherit; color: #475569;
+    padding: 8px 16px; border-radius: 999px; cursor: pointer;
+  }
+  .levels button.active { background: #1f2937; color: #fff; }
+
+  .panel {
+    background: #c7ced8; padding: 12px; border-radius: 14px; max-width: 100%;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .15);
+  }
+  .hud { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .counter {
+    font-family: Consolas, "Courier New", monospace; font-weight: 700; font-size: 26px;
+    color: #ff3b30; background: #111; padding: 2px 10px; border-radius: 6px;
+    letter-spacing: 2px; min-width: 70px; text-align: center;
+    text-shadow: 0 0 6px rgba(255, 59, 48, .6);
+  }
+  #face {
+    font-size: 26px; width: 48px; height: 48px; border: 0; border-radius: 10px;
+    background: #e5e9ef; cursor: pointer; line-height: 1;
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18);
+  }
+  #face:active { transform: translateY(1px); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .18); }
+
+  .board-wrap { overflow-x: auto; max-width: calc(100vw - 56px); }
+  #board {
+    display: grid; gap: 2px; width: max-content;
+    touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  .cell {
+    width: var(--cell); height: var(--cell);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: calc(var(--cell) * .55); line-height: 1;
+    background: #eef1f5; border-radius: 5px; cursor: pointer;
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .15), inset 0 2px 0 rgba(255, 255, 255, .8);
+  }
+  .cell:not(.open):hover { background: #fff; }
+  .cell.open { background: #dfe4ea; box-shadow: none; cursor: default; }
+  .cell.flag { font-size: calc(var(--cell) * .5); }
+  .n1 { color: #1976d2; } .n2 { color: #388e3c; } .n3 { color: #d32f2f; } .n4 { color: #283593; }
+  .n5 { color: #8d2f2f; } .n6 { color: #00838f; } .n7 { color: #222; }    .n8 { color: #757575; }
+  .cell.mine  { background: #f3c6c6; font-size: calc(var(--cell) * .5); }
+  .cell.boom  { background: #ff4d4f; }
+  .cell.wrong { background: #f7e3b5; font-size: calc(var(--cell) * .45); }
+
+  .status { min-height: 1.5em; font-weight: 600; margin: 0; }
+  .status.win { color: #15803d; }
+  .status.lose { color: #b91c1c; }
+
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .controls button {
+    font: inherit; border: 0; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+    background: #fff; color: #1f2937; box-shadow: 0 2px 6px rgba(15, 23, 42, .1);
+  }
+  .controls button.on { background: #dc2626; color: #fff; }
+
+  .best, .help { font-size: 13px; color: #64748b; text-align: center; line-height: 1.7; margin: 0; }
+  kbd { background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>💣 지뢰 찾기</h1>
+
+  <div class="levels" id="levels">
+    <button data-level="beginner">초급</button>
+    <button data-level="intermediate">중급</button>
+    <button data-level="expert">고급</button>
+  </div>
+
+  <div class="panel">
+    <div class="hud">
+      <div class="counter" id="mineCount">010</div>
+      <button id="face" title="새 게임">🙂</button>
+      <div class="counter" id="timer">000</div>
+    </div>
+    <div class="board-wrap"><div id="board"></div></div>
+  </div>
+
+  <p class="status" id="status"></p>
+
+  <div class="controls">
+    <button id="flagMode">🚩 깃발 모드: 끔</button>
+    <button id="restart">🔄 새 게임</button>
+  </div>
+
+  <p class="best" id="best"></p>
+  <p class="help">
+    왼쪽 클릭: 칸 열기 · 오른쪽 클릭: 깃발 꽂기<br>
+    숫자 클릭: 주변 깃발 수가 맞으면 나머지 칸 한 번에 열기<br>
+    모바일: 길게 눌러 깃발 · <kbd>R</kbd> 새 게임 · <kbd>F</kbd> 깃발 모드
+  </p>
+</div>
+
+<script>
+const LEVELS = {
+  beginner:     { name: '초급', rows: 9,  cols: 9,  mines: 10, size: 36 },
+  intermediate: { name: '중급', rows: 16, cols: 16, mines: 40, size: 30 },
+  expert:       { name: '고급', rows: 16, cols: 30, mines: 99, size: 26 },
+};
+
+const boardEl = document.getElementById('board');
+const faceEl = document.getElementById('face');
+const mineCountEl = document.getElementById('mineCount');
+const timerEl = document.getElementById('timer');
+const statusEl = document.getElementById('status');
+const flagModeEl = document.getElementById('flagMode');
+const bestEl = document.getElementById('best');
+
+let level = 'beginner';
+let rows, cols, mines, cells;
+let firstClick, gameOver, revealedCount, flags;
+let timerId = null, startTime = 0;
+let flagMode = false;
+
+// ---------- 게임 설정 ----------
+function newGame() {
+  const L = LEVELS[level];
+  rows = L.rows; cols = L.cols; mines = L.mines;
+  stopTimer();
+  timerEl.textContent = '000';
+  firstClick = true; gameOver = false; revealedCount = 0; flags = 0;
+
+  boardEl.style.setProperty('--cell', L.size + 'px');
+  boardEl.style.gridTemplateColumns = `repeat(${cols}, var(--cell))`;
+  boardEl.innerHTML = '';
+  cells = [];
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < rows * cols; i++) {
+    const el = document.createElement('div');
+    el.className = 'cell';
+    el.dataset.i = i;
+    frag.appendChild(el);
+    cells.push({ mine: false, adj: 0, revealed: false, flagged: false, el });
+  }
+  boardEl.appendChild(frag);
+
+  setFace('🙂');
+  setStatus('');
+  updateMineCount();
+  document.querySelectorAll('#levels button').forEach(b =>
+    b.classList.toggle('active', b.dataset.level === level));
+  showBest();
+}
+
+function neighbors(i) {
+  const r = Math.floor(i / cols), c = i % cols, out = [];
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue;
+      const nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) out.push(nr * cols + nc);
+    }
+  }
+  return out;
+}
+
+// 첫 클릭한 칸과 그 주변에는 지뢰를 두지 않음
+function placeMines(safe) {
+  let excluded = new Set([safe, ...neighbors(safe)]);
+  if (rows * cols - excluded.size < mines) excluded = new Set([safe]);
+  const pool = [];
+  for (let i = 0; i < rows * cols; i++) if (!excluded.has(i)) pool.push(i);
+  for (let k = 0; k < mines; k++) {
+    const j = k + Math.floor(Math.random() * (pool.length - k));
+    [pool[k], pool[j]] = [pool[j], pool[k]];
+    cells[pool[k]].mine = true;
+  }
+  cells.forEach((cell, i) => {
+    cell.adj = neighbors(i).filter(n => cells[n].mine).length;
+  });
+}
+
+// ---------- 동작 ----------
+function reveal(i) {
+  const cell = cells[i];
+  if (gameOver || cell.revealed || cell.flagged) return;
+  if (firstClick) {
+    firstClick = false;
+    placeMines(i);
+    startTimer();
+  }
+  if (cell.mine) { lose(i); return; }
+
+  const stack = [i];
+  while (stack.length) {
+    const j = stack.pop();
+    const c = cells[j];
+    if (c.revealed || c.flagged) continue;
+    c.revealed = true;
+    revealedCount++;
+    renderCell(j);
+    if (c.adj === 0) {
+      for (const n of neighbors(j)) {
+        if (!cells[n].revealed && !cells[n].flagged) stack.push(n);
+      }
+    }
+  }
+  checkWin();
+}
+
+function chord(i) {
+  const cell = cells[i];
+  if (gameOver || !cell.revealed || cell.adj === 0) return;
+  const ns = neighbors(i);
+  if (ns.filter(n => cells[n].flagged).length !== cell.adj) return;
+  for (const n of ns) reveal(n);
+}
+
+function toggleFlag(i) {
+  const cell = cells[i];
+  if (gameOver || cell.revealed) return;
+  cell.flagged = !cell.flagged;
+  flags += cell.flagged ? 1 : -1;
+  renderCell(i);
+  updateMineCount();
+}
+
+function renderCell(i) {
+  const c = cells[i], el = c.el;
+  el.className = 'cell';
+  if (c.revealed) {
+    el.classList.add('open');
+    if (c.adj) el.classList.add('n' + c.adj);
+    el.textContent = c.adj || '';
+  } else if (c.flagged) {
+    el.classList.add('flag');
+    el.textContent = '🚩';
+  } else {
+    el.textContent = '';
+  }
+}
+
+function lose(i) {
+  gameOver = true;
+  stopTimer();
+  setFace('😵');
+  cells.forEach(c => {
+    if (c.mine && !c.flagged) { c.el.className = 'cell open mine'; c.el.textContent = '💣'; }
+    else if (!c.mine && c.flagged) { c.el.className = 'cell open wrong'; c.el.textContent = '❌'; }
+  });
+  cells[i].el.classList.add('boom');
+  setStatus('펑! 지뢰를 밟았어요 💥 얼굴을 눌러 다시 시작하세요.', 'lose');
+}
+
+function checkWin() {
+  if (gameOver || revealedCount !== rows * cols - mines) return;
+  gameOver = true;
+  const elapsed = stopTimer();
+  cells.forEach((c, i) => {
+    if (c.mine && !c.flagged) { c.flagged = true; renderCell(i); }
+  });
+  flags = mines;
+  updateMineCount();
+  setFace('😎');
+
+  const best = loadBest();
+  const isRecord = best[level] == null || elapsed < best[level];
+  if (isRecord) { best[level] = elapsed; saveBest(best); }
+  setStatus(`🎉 성공! ${elapsed.toFixed(1)}초` + (isRecord ? ' — 최고 기록!' : ''), 'win');
+  showBest();
+}
+
+// ---------- UI 보조 ----------
+function setFace(f) { faceEl.textContent = f; }
+function setStatus(text, type = '') { statusEl.textContent = text; statusEl.className = 'status ' + type; }
+
+function pad3(n) {
+  if (n < 0) return '-' + String(Math.min(99, -n)).padStart(2, '0');
+  return String(Math.min(999, n)).padStart(3, '0');
+}
+function updateMineCount() { mineCountEl.textContent = pad3(mines - flags); }
+
+function startTimer() {
+  startTime = performance.now();
+  timerEl.textContent = '000';
+  timerId = setInterval(() => {
+    timerEl.textContent = pad3(Math.floor((performance.now() - startTime) / 1000));
+  }, 250);
+}
+function stopTimer() {
+  if (timerId === null) return 0;
+  clearInterval(timerId);
+  timerId = null;
+  return (performance.now() - startTime) / 1000;
+}
+
+function loadBest() {
+  try { return JSON.parse(localStorage.getItem('minesweeper-best')) || {}; } catch { return {}; }
+}
+function saveBest(b) {
+  try { localStorage.setItem('minesweeper-best', JSON.stringify(b)); } catch {}
+}
+function showBest() {
+  const b = loadBest();
+  bestEl.textContent = '🏆 최고 기록 · ' + Object.entries(LEVELS)
+    .map(([k, L]) => `${L.name} ${b[k] != null ? b[k].toFixed(1) + '초' : '—'}`)
+    .join(' · ');
+}
+
+function setFlagMode(on) {
+  flagMode = on;
+  flagModeEl.classList.toggle('on', on);
+  flagModeEl.textContent = `🚩 깃발 모드: ${on ? '켬' : '끔'}`;
+}
+
+// ---------- 입력 ----------
+let pressTimer = null, longPressed = false, lastPointer = 'mouse';
+
+boardEl.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.cell');
+  if (!el || gameOver) return;
+  lastPointer = e.pointerType;
+  if (e.button === 0) setFace('😮');
+  if (e.pointerType !== 'mouse') {
+    longPressed = false;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      longPressed = true;
+      const i = +el.dataset.i;
+      if (cells[i].revealed) chord(i); else toggleFlag(i);
+      if (navigator.vibrate) navigator.vibrate(30);
+      if (!gameOver) setFace('🙂');
+    }, 400);
+  }
+});
+
+function endPress() {
+  clearTimeout(pressTimer);
+  if (!gameOver) setFace('🙂');
+}
+window.addEventListener('pointerup', endPress);
+boardEl.addEventListener('pointercancel', endPress);
+
+boardEl.addEventListener('click', e => {
+  const el = e.target.closest('.cell');
+  if (!el) return;
+  if (longPressed) { longPressed = false; return; }
+  const i = +el.dataset.i;
+  if (cells[i].revealed) chord(i);
+  else if (flagMode) toggleFlag(i);
+  else reveal(i);
+});
+
+boardEl.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const el = e.target.closest('.cell');
+  if (!el || lastPointer !== 'mouse') return;   // 터치는 길게 누르기로 처리
+  const i = +el.dataset.i;
+  if (cells[i].revealed) chord(i); else toggleFlag(i);
+});
+
+faceEl.addEventListener('click', newGame);
+document.getElementById('restart').addEventListener('click', newGame);
+flagModeEl.addEventListener('click', () => setFlagMode(!flagMode));
+document.getElementById('levels').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  level = b.dataset.level;
+  newGame();
+});
+window.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'r' || e.key === 'R' || e.key === 'F2') { e.preventDefault(); newGame(); }
+  if (e.key === 'f' || e.key === 'F') setFlagMode(!flagMode);
+});
+
+newGame();
+</script>
+</body>
+</html>
